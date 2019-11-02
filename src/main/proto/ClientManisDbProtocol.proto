@@ -1,0 +1,24 @@
+
+option java_package = "com.cnblogs.duma.protocol.proto";
+option java_outer_classname = "ClientManisDbProtocolProtos";
+option java_generic_services = true;
+option java_generate_equals_and_hash = true;
+package duma.manis;
+
+/**
+ * ClientManisDbProtocol Service 定义了客户端与 ManisDb 之间的接口
+ * 定义的方法同 com.cnblogs.duma.protocol.ClientProtocol
+ */
+
+message GetTableCountRequestProto {
+    required string dbName = 1;
+    required string tbName = 2;
+}
+
+message GetTableCountResponseProto {
+    required int32 result = 1;
+}
+
+service ClientManisDbProtocol {
+    rpc getTableCount(GetTableCountRequestProto) returns (GetTableCountResponseProto);
+}

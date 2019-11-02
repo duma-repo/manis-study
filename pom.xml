@@ -16,6 +16,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.source>1.7</maven.compiler.source>
     <maven.compiler.target>1.7</maven.compiler.target>
+    <protobuf.version>2.5.0</protobuf.version>
   </properties>
 
   <dependencies>
@@ -25,9 +26,39 @@
       <version>4.11</version>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>com.google.protobuf</groupId>
+      <artifactId>protobuf-java</artifactId>
+      <version>${protobuf.version}</version>
+    </dependency>
   </dependencies>
 
   <build>
+    <extensions>
+      <extension>
+        <groupId>kr.motd.maven</groupId>
+        <artifactId>os-maven-plugin</artifactId>
+        <version>1.6.0</version>
+      </extension>
+    </extensions>
+    <plugins>
+      <plugin>
+        <groupId>org.xolstice.maven.plugins</groupId>
+        <artifactId>protobuf-maven-plugin</artifactId>
+        <version>0.6.1</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>compile</goal>
+              <goal>test-compile</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <protocArtifact>com.google.protobuf:protoc:2.5.0:exe:${os.detected.classifier}</protocArtifact>
+        </configuration>
+      </plugin>
+    </plugins>
     <pluginManagement><!-- lock down plugins versions to avoid using Maven defaults (may be moved to parent pom) -->
       <plugins>
         <!-- clean lifecycle, see https://maven.apache.org/ref/current/maven-core/lifecycles.html#clean_Lifecycle -->
