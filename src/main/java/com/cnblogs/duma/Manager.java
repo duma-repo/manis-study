@@ -1,6 +1,7 @@
 package com.cnblogs.duma;
 
 import com.cnblogs.duma.conf.Configuration;
+import com.cnblogs.duma.ipc.RPC;
 import com.cnblogs.duma.protocol.ManagerProtocol;
 
 import java.io.Closeable;
@@ -22,8 +23,15 @@ public class Manager implements Closeable {
         return this.manisDb.setMaxTable(tableNum);
     }
 
+    private void closeConnectionToManisDb() {
+        RPC.stopProxy(manisDb);
+    }
+
     @Override
     public synchronized void close() throws IOException {
-
+        if (clientRunning) {
+            clientRunning = false;
+            closeConnectionToManisDb();
+        }
     }
 }

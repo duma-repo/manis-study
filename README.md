@@ -1,6 +1,6 @@
 # manis-study
 
-代码已更新至第三节
+代码已更新至第四节
 
 教程内容：
 
@@ -9,3 +9,5 @@
 [2. 搭建客户端本地调用框架](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf0ee51d457230493c32)
 
 [3. 创建客户端的 Invoker 代理](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf166fb9a04dea5dfa5d)
+
+[4. serializable序列化的代理模块](https://juejin.im/editor/book/5dadc3595188256612195751/section/5dadcf1f518825092e160977)
