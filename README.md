@@ -1,6 +1,6 @@
 # manis-study
 
-欢迎关注公众号：渡码
+欢迎关注公众号：**渡码**
 
 ![](https://user-gold-cdn.xitu.io/2019/10/21/16deeefa694211d1?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
 
@@ -14,6 +14,6 @@
 
 [3. 创建客户端的 Invoker 代理](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf166fb9a04dea5dfa5d)
 
-[4. serializable序列化的代理模块](https://juejin.im/editor/book/5dadc3595188256612195751/section/5dadcf1f518825092e160977)
+[4. serializable序列化的代理模块](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf1f518825092e160977)
 
-[5. protobuf序列化方式的代理模块](https://juejin.im/editor/book/5dadc3595188256612195751/section/5dadcf27e51d4578176b519b)
+[5. protobuf序列化方式的代理模块](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf27e51d4578176b519b)
