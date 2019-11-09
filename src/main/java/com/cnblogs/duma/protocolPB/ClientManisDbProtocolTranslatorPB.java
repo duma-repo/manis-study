@@ -31,5 +31,6 @@ public class ClientManisDbProtocolTranslatorPB implements
 
     @Override
     public void close() throws IOException {
+        RPC.stopProxy(rpcProxy);
     }
 }

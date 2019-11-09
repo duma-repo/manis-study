@@ -145,6 +145,10 @@ public class RPC {
         }
 
         try {
+            if (proxy instanceof Closeable) {
+                ((Closeable) proxy).close();
+                return;
+            }
             InvocationHandler handler = Proxy.getInvocationHandler(proxy);
             if (handler instanceof Closeable) {
                 ((Closeable) handler).close();
