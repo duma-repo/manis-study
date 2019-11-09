@@ -1,0 +1,19 @@
+
+/**
+ *  这里定义了一些 message 用于 Protocol Buffer RPC Engine
+ */
+
+option java_package = "com.cnblogs.duma.ipc.protobuf";
+option java_outer_classname = "ProtobufRpcEngineProtos";
+option java_generate_equals_and_hash = true;
+package duma.manis;
+
+/**
+ *  message RequestHeaderProto 定义了从客户端向服务端发请求时需要携带 header
+ *  如：方法名、协议的类名等
+ */
+message RequestHeaderProto {
+    required string methodName = 1;
+    required string declaringClassProtocolName = 2;
+    required int64 clientProtocolVersion = 3;
+}

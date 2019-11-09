@@ -1,6 +1,7 @@
 package com.cnblogs.duma;
 
 import com.cnblogs.duma.conf.Configuration;
+import com.cnblogs.duma.ipc.RPC;
 import com.cnblogs.duma.protocol.ClientProtocol;
 
 import java.io.Closeable;
@@ -34,8 +35,15 @@ public class ManisClient implements Closeable {
         return this.manisDb.getTableCount(dbName, tbName);
     }
 
+    private void closeConnectionToManisDb() {
+        RPC.stopProxy(manisDb);
+    }
+
     @Override
     public void close() throws IOException {
-
+        if (clientRunning) {
+            clientRunning = false;
+            closeConnectionToManisDb();
+        }
     }
 }
