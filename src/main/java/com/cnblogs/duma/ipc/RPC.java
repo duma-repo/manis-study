@@ -125,7 +125,6 @@ public class RPC {
             throws IOException {
 
         /**
-         * todo 解析为什么需要new对象，而不是将getProxy定义成静态方法
          * 静态方法和单例对象的区别
          */
         return getProtocolEngine(protocol, conf).getProxy(protocol, clientVersion,
