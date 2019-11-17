@@ -4,7 +4,7 @@
 
 ![](https://user-gold-cdn.xitu.io/2019/10/21/16deeefa694211d1?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
 
-代码已更新至第六节
+代码已更新至第七节
 
 教程内容：
 
@@ -18,4 +18,6 @@
 
 [5. protobuf序列化方式的代理模块](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf27e51d4578176b519b)
 
-[6. 发送网络请求的准备工作](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf30e51d4524e87d5eef)
+[6. 发送调用请求的准备工作](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf30e51d4524e87d5eef)
+
+[7. 建立与服务端的网络连接](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf386fb9a04de30c88aa)

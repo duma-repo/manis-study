@@ -1,0 +1,14 @@
+
+option java_package = "com.cnblogs.duma.ipc.protobuf";
+option java_outer_classname = "IpcConnectionContextProtos";
+option java_generate_equals_and_hash = true;
+package duma.manis;
+
+
+message IpcConnectionContextProto {
+    // Hadoop 中用该字段代表用户信息，为了简化，manis 中去掉用户相关的东西
+    // optional UserInformationProto userInfo = 2;
+
+    // 协议名字
+    optional string protocol = 1;
+}

@@ -3,6 +3,9 @@ package com.cnblogs.duma.ipc;
 import com.cnblogs.duma.conf.CommonConfigurationKeysPublic;
 import com.cnblogs.duma.conf.Configuration;
 import com.cnblogs.duma.io.Writable;
+import com.cnblogs.duma.ipc.protobuf.IpcConnectionContextProtos.*;
+import com.cnblogs.duma.ipc.protobuf.RpcHeaderProtos.*;
+import com.cnblogs.duma.net.NetUtils;
 import com.cnblogs.duma.util.ProtoUtil;
 import com.google.protobuf.CodedOutputStream;
 import org.apache.commons.logging.Log;
@@ -123,6 +126,10 @@ public class Client {
         private final ConnectionId remoteId;
         private InetSocketAddress server;
 
+        private Socket socket = null;
+        private DataInputStream in;
+        private DataOutputStream out;
+
         private final int rpcTimeOut;
         /** 连接空闲时最大休眠时间，单位：毫秒 */
         private final int maxIdleTime;
@@ -138,6 +145,8 @@ public class Client {
 
         /** 标识是否应该关闭连接，默认值： false */
         private AtomicBoolean shouldCloseConnection = new AtomicBoolean();
+        /** I/O 活动的最新时间 */
+        private AtomicLong lastActivity = new AtomicLong();
 
         private Hashtable<Integer, Call> calls = new Hashtable<>();
 
@@ -171,6 +180,13 @@ public class Client {
         }
 
         /**
+         * 将当前时间更新为 I/O 最新活动时间
+         */
+        private void touch() {
+            lastActivity.set(System.currentTimeMillis());
+        }
+
+        /**
          * 向该 Connection 对象的 call 队列加入一个 call
          * 同时唤醒等待的线程
          * @param call 加入的队列得元素
@@ -185,17 +201,161 @@ public class Client {
             return true;
         }
 
+        private synchronized void setupConnection() throws IOException {
+            short timeOutFailures = 0;
+            while (true) {
+                try {
+                    this.socket = socketFactory.createSocket();
+                    this.socket.setTcpNoDelay(tcpNoDelay);
+                    this.socket.setKeepAlive(true);
+
+                    NetUtils.connect(socket, server, connectionTimeOut);
+
+                    if (rpcTimeOut > 0) {
+                        // 用 rpcTimeOut 覆盖 pingInterval
+                        pingInterval = rpcTimeOut;
+                    }
+                    socket.setSoTimeout(pingInterval);
+                    return;
+                } catch (SocketTimeoutException ste) {
+                    handleConnectionTimeout(timeOutFailures++, maxRetriesOnSocketTimeouts, ste);
+                } catch (IOException ioe) {
+                    throw ioe;
+                }
+            }
+        }
+
         /**
-         * 连接 server，建立 IO 流。向 server 发送 header 信息
-         * 启动线程，等待返回信息。由于多个线程持有相同 Connection 对象，需要保证只有一个线程可以调用 start 方法
+         * 建立连接后发送的连接头（header）
+         * +----------------------------------+
+         * |  "mrpc" 4 bytes                  |
+         * +----------------------------------+
+         * |  Version (1 byte)                |
+         * +----------------------------------+
+         * |  Service Class (1 byte)          |
+         * +----------------------------------+
+         * |  AuthProtocol (1 byte)           |
+         * +----------------------------------+
+         * @param outStream 输出流
+         * @throws IOException
+         */
+        private void writeConnectionHeader(OutputStream outStream) throws IOException {
+            DataOutputStream out = new DataOutputStream(new BufferedOutputStream(outStream));
+
+            out.write(RpcConstants.HEADER.array());
+            out.write(RpcConstants.CURRENT_VERSION);
+            out.write(serviceClass);
+            // 暂无授权协议，写 0
+            out.write(0);
+            out.flush();
+        }
+
+        /**
+         * 每次连接都要写连接上下文（context）
+         * @param remoteId
+         */
+        private void writeConnectionContext(ConnectionId remoteId) throws IOException {
+            IpcConnectionContextProto connectionContext =
+                    ProtoUtil.makeIpcConnectionContext(
+                            RPC.getProtocolName(remoteId.getProtocol()));
+
+            RpcRequestHeaderProto connectionContextHeader = ProtoUtil
+                    .makeRpcRequestHeader(RPC.RpcKind.RPC_PROTOCOL_BUFFER,
+                            RpcRequestHeaderProto.OperationProto.RPC_FINAL_PACKET,
+                            RpcConstants.CONNECTION_CONTEXT_CALL_ID, RpcConstants.INVALID_RETRY_COUNT,
+                            clientId);
+
+            ProtobufRpcEngine.RpcRequestMessageWrapper request =
+                    new ProtobufRpcEngine.RpcRequestMessageWrapper(connectionContextHeader, connectionContext);
+
+            out.writeInt(request.getLength());
+            request.write(out);
+        }
+
+        /**
+         * 连接 server、建立 IO 流、向 server 发送 header/context 信息、启动receiver线程。
+         * 由于多个线程持有相同 Connection 对象，需要保证只有一个线程可以执行上述业务逻辑
          * 因此该方法需要用 synchronized 修饰
          */
         private synchronized void setupIOStreams() {
+            if (socket != null || shouldCloseConnection.get()) {
+                return;
+            }
 
+            try {
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("Connecting to " + server);
+                }
+                setupConnection();
+                InputStream inStream = NetUtils.getInputStream(socket);
+                OutputStream outStream = NetUtils.getOutputStream(socket);
+                writeConnectionHeader(outStream);
+
+                if (doPing) {
+                    /**
+                     * todo ping相关
+                     */
+                }
+
+                /**
+                 * DataInputStream 可以支持 Java 原子类型的输入输入
+                 * BufferedInputStream 具有缓冲的作用
+                 */
+                this.in = new DataInputStream(new BufferedInputStream(inStream));
+                this.out = new DataOutputStream(new BufferedOutputStream(outStream));
+
+                writeConnectionContext(remoteId);
+
+                touch();
+
+                // 启动 receiver 线程，用来接收响应信息
+                start();
+                return;
+            } catch (Throwable t) {
+                if (t instanceof IOException) {
+                    markClosed((IOException) t);
+                } else {
+                    markClosed(new IOException("Couldn't set up IO streams", t));
+                }
+                close();
+            }
+        }
+
+        private void closeConnection() {
+            if (socket == null) {
+                return;
+            }
+            try {
+                socket.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+                LOG.warn("Not able to close a socket", e);
+            }
+            //将 socket 置位 null 为了下次能够重新建立连接
+            socket = null;
+        }
+
+        private void handleConnectionTimeout(
+                int curRetries, int maxRetries, IOException ioe) throws IOException {
+
+            closeConnection();
+
+            /**
+             * 达到重试的最大次数，将异常抛出
+             */
+            if (curRetries >= maxRetries) {
+                throw ioe;
+            }
+            LOG.info("Retrying connect to server: " + server + ". Already tried "
+                    + curRetries + " time(s); maxRetries=" + maxRetries);
         }
 
         @Override
         public void run() {
+
+        }
+
+        private synchronized void markClosed(IOException e) {
 
         }
 

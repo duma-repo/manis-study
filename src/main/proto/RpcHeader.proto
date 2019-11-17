@@ -1,0 +1,27 @@
+
+option java_package = "com.cnblogs.duma.ipc.protobuf";
+option java_outer_classname = "RpcHeaderProtos";
+option java_generate_equals_and_hash = true;
+package duma.manis;
+
+enum RpcKindProto {
+    RPC_BUILTIN          = 0;  // 内部使用，为了占位
+    RPC_SERIALIZABLE     = 1;  // 使用 WritableRpcEngine
+    RPC_PROTOCOL_BUFFER  = 2;  // 使用 ProtobufRpcEngine
+}
+
+message RpcRequestHeaderProto {
+    // RPC 请求头
+    enum OperationProto {
+        RPC_FINAL_PACKET        = 0; // 最终的 rpc 包
+        RPC_CONTINUATION_PACKET = 1; // 尚未完成的包
+        RPC_CLOSE_CONNECTION     = 2; // 关闭 rpc 连接
+    }
+
+    optional RpcKindProto rpcKind = 1;
+    optional OperationProto rpcOp = 2;
+    required sint32 callId = 3; // a sequence number that is sent back in response
+    required bytes clientId = 4; // 全局唯一的 client ID
+    // clientId + callId 可以唯一确定请求重试的次数，1 意味着第一次重试
+    optional sint32 retryCount = 5 [default = -1];
+}
