@@ -5,6 +5,7 @@ import com.cnblogs.duma.io.DataOutputOutputStream;
 import com.cnblogs.duma.io.Writable;
 import com.cnblogs.duma.ipc.protobuf.ProtobufRpcEngineProtos.RequestHeaderProto;
 import com.cnblogs.duma.ipc.protobuf.ProtobufRpcEngineProtos;
+import com.cnblogs.duma.ipc.protobuf.RpcHeaderProtos.RpcRequestHeaderProto;
 import com.cnblogs.duma.util.ProtoUtil;
 import com.google.protobuf.CodedOutputStream;
 import com.google.protobuf.GeneratedMessage;
@@ -248,6 +249,19 @@ public class ProtobufRpcEngine implements RpcEngine {
         public String toString() {
             return requestHeader.getDeclaringClassProtocolName() + "." +
                     requestHeader.getMethodName();
+        }
+    }
+
+    public static class RpcRequestMessageWrapper extends
+            BaseRpcMessageWithHeader<RpcRequestHeaderProto> {
+
+        public RpcRequestMessageWrapper(RpcRequestHeaderProto requestHeader, Message theRequest) {
+            super(requestHeader, theRequest);
+        }
+
+        @Override
+        RpcRequestHeaderProto parseHeaderFrom(byte[] bytes) throws IOException {
+            return RpcRequestHeaderProto.parseFrom(bytes);
         }
     }
 
