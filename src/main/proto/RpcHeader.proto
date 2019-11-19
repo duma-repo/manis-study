@@ -25,3 +25,47 @@ message RpcRequestHeaderProto {
     // clientId + callId 可以唯一确定请求重试的次数，1 意味着第一次重试
     optional sint32 retryCount = 5 [default = -1];
 }
+
+/**
+ * Rpc Response Header - RPC 响应头
+ */
+message RpcResponseHeaderProto {
+    /**
+      * RpcStastus - 标识成功或者失败
+      **/
+
+    enum RpcStatusProto {
+        SUCCESS = 0;  // RPC 调用成功
+        ERROR = 1;    // RPC 调用出错 - 可以不关闭连接
+        FATAL = 2;    // 致命错误，需要关闭连接
+    }
+
+    enum RpcErrorCodeProto {
+
+        // 非致命的 Rpc 错误码
+        ERROR_APPLICATION = 1;      // RPC 失败 - rpc 应用层抛出异常
+        ERROR_NO_SUCH_METHOD = 2;   // Rpc 调用错误 - 没有这样的方法
+        ERROR_NO_SUCH_PROTOCOL = 3; // Rpc 调用错误 - 没有这样的协议
+        ERROR_RPC_SERVER  = 4;      // Rpc 服务端调用错误
+        ERROR_SERIALIZING_RESPONSE = 5; // 序列化响应时出错
+        ERROR_RPC_VERSION_MISMATCH = 6; // Rpc 接口（协议）版本不匹配
+
+
+        // 致命错误
+        FATAL_UNKNOWN = 10;                   // 未知的致命错误
+        FATAL_UNSUPPORTED_SERIALIZATION = 11; // 不支持的序列化类型
+        FATAL_INVALID_RPC_HEADER = 12;        // RpcHeader的字段无效
+        FATAL_DESERIALIZING_REQUEST = 13;     // 不能反序列化调用请求
+        FATAL_VERSION_MISMATCH = 14;          // Ipc 层版本不匹配
+        FATAL_UNAUTHORIZED = 15;              // 授权失败，Manis 中未使用
+    }
+
+    required uint32 callId = 1;
+    required RpcStatusProto status = 2;
+    optional uint32 serverIpcVersionNum = 3; // 服务端 IPC 版本号
+    optional string exceptionClassName = 4;  // 发生错误时的异常类名
+    optional string errorMsg = 5;  // 错误的栈踪
+    optional RpcErrorCodeProto errorDetail = 6; // 错误码
+    optional bytes clientId = 7;
+    optional sint32 retryCount = 8 [default = -1]; // 重试次数，Manis 中未使用
+}

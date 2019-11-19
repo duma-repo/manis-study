@@ -2,11 +2,15 @@ package com.cnblogs.duma.ipc;
 
 import com.cnblogs.duma.conf.CommonConfigurationKeysPublic;
 import com.cnblogs.duma.conf.Configuration;
+import com.cnblogs.duma.io.IOUtils;
 import com.cnblogs.duma.io.Writable;
 import com.cnblogs.duma.ipc.protobuf.IpcConnectionContextProtos.*;
 import com.cnblogs.duma.ipc.protobuf.RpcHeaderProtos.*;
 import com.cnblogs.duma.net.NetUtils;
 import com.cnblogs.duma.util.ProtoUtil;
+import com.cnblogs.duma.util.ReflectionUtils;
+import com.cnblogs.duma.util.StringUtils;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.protobuf.CodedOutputStream;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -15,12 +19,8 @@ import javax.net.SocketFactory;
 import java.io.*;
 import java.lang.reflect.Constructor;
 import java.net.*;
-import java.util.Hashtable;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Objects;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -44,6 +44,56 @@ public class Client {
     private final int connectionTimeOut;
     private final byte[] clientId;
 
+    private final ExecutorService sendParamsExecutor;
+    private final static ClientExecutorServiceFactory clientExecutorFactory =
+            new ClientExecutorServiceFactory();
+
+    private static class ClientExecutorServiceFactory {
+        private int executorRefCount = 0;
+        private ExecutorService clientExecutor = null;
+
+        /**
+         * 如果内部引用计数器（executorRefCount）为 0，初始化
+         * 否则直接返回 Executor
+         * 为了保证唯一性，该函数用`synchronized`来修饰
+         * @return ExecutorService 实例
+         */
+        synchronized ExecutorService refAndGetInstance() {
+            if (executorRefCount == 0) {
+                clientExecutor = Executors.newCachedThreadPool(
+                        new ThreadFactoryBuilder().setDaemon(true)
+                                .setNameFormat("IPC Parameter Sending Thread #%d")
+                                .build());
+            }
+            executorRefCount++;
+            return clientExecutor;
+        }
+
+        synchronized void unrefAndCleanup() {
+            executorRefCount--;
+            assert executorRefCount >= 0;
+
+            if (executorRefCount == 0) {
+                clientExecutor.shutdown();
+                /**
+                 * 一分钟后如果仍然没有关闭或者在等待过程中被中断，
+                 * 则调用 {@link ExecutorService#shutdownNow()}
+                 */
+                try {
+                    if (!clientExecutor.awaitTermination(1, TimeUnit.MINUTES)) {
+                        clientExecutor.shutdownNow();
+                    }
+                } catch (InterruptedException e) {
+                    LOG.error("Interrupted while waiting for clientExecutor" +
+                            "to stop", e);
+                    clientExecutor.shutdownNow();
+                }
+
+                clientExecutor = null;
+            }
+        }
+    }
+
     /**
      * Client 构造函数
      * @param valueClass 调用的返回类型
@@ -58,9 +108,54 @@ public class Client {
         this.connectionTimeOut = conf.getInt(CommonConfigurationKeysPublic.IPC_CLIENT_CONNECT_TIMEOUT_KEY,
                 CommonConfigurationKeysPublic.IPC_CLIENT_CONNECT_TIMEOUT_DEFAULT);
         this.clientId = ClientId.getClientId();
+        this.sendParamsExecutor = clientExecutorFactory.refAndGetInstance();
     }
 
     public void stop() {
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Stopping client");
+        }
+
+        if (!running.compareAndSet(true, false)) {
+            return;
+        }
+
+        // 唤醒 connection
+        synchronized (connections) {
+            for (Connection connection : connections.values()) {
+                connection.interrupt();
+            }
+        }
+
+        // 等待，直到所有connection关闭
+        while (!connections.isEmpty()) {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+            }
+        }
+        clientExecutorFactory.unrefAndCleanup();
+    }
+
+    void checkResponse(RpcResponseHeaderProto header) throws IOException {
+        if (header == null) {
+            throw new IOException("Response is null.");
+        }
+
+        if (header.hasClientId()) {
+            final byte[] responseId = header.getClientId().toByteArray();
+            if (!Arrays.equals(responseId, RpcConstants.DUMMY_CLIENT_ID)) {
+                if (!Arrays.equals(responseId, clientId)) {
+                    throw new IOException("Client IDs not matched: local ID="
+                            + StringUtils.byteToHexString(clientId) + ", ID in response="
+                            + StringUtils.byteToHexString(header.getClientId().toByteArray()));
+                }
+            }
+        }
+    }
+
+    Call createCall(RPC.RpcKind rpcKind, Writable rpcRequest) {
+        return new Call(rpcKind, rpcRequest);
     }
 
     /**
@@ -79,6 +174,36 @@ public class Client {
             this.rpcRequest = rpcRequest;
 
             this.id = nextCallId();
+        }
+
+        /**
+         * 调用完成，唤醒调用者
+         */
+        public synchronized void callComplete() {
+            this.done = true;
+            notify();
+        }
+
+        /**
+         * 调用过程发生错误是，设置异常信息
+         * @param error 异常信息
+         */
+        public synchronized void setException(IOException error) {
+            this.error = error;
+            callComplete();
+        }
+
+        /**
+         * 设置返回值.
+         * @param rpcResponse 调用的返回值
+         */
+        public synchronized void setRpcResponse(Writable rpcResponse) {
+            this.rpcResponse = rpcResponse;
+            callComplete();
+        }
+
+        public synchronized Writable getRpcResponse() {
+            return rpcResponse;
         }
     }
 
@@ -119,7 +244,63 @@ public class Client {
     public Writable call(RPC.RpcKind rpcKind, Writable rpcRequest,
                          ConnectionId remoteId, int serviceClass)
             throws IOException {
-        return null;
+        final Call call = createCall(rpcKind, rpcRequest);
+        Connection connection = getConnection(remoteId, call, serviceClass);
+        try {
+            // 发送 rpc 请求
+            connection.sendRpcRequest(call);
+        } catch (InterruptedException e) {
+            // 发送调用请求被中断后，需要设置当前调用线程的中断标记位
+            Thread.currentThread().interrupt();
+            LOG.warn("interrupted waiting to send rpc request to server", e);
+            throw new IOException(e);
+        }
+
+        boolean interrupted = false;
+        // 为了能在 call 上调用 wait 方法，需要在 call 对象上加锁
+        synchronized (call) {
+            while (!call.done) {
+                try {
+                    // 等待，知道 RPC 结束被唤醒
+                    call.wait();
+                } catch (InterruptedException e) {
+                    // 保存被中断过的标记
+                    interrupted = true;
+                }
+            }
+
+            if (interrupted) {
+                // 等待服务端返回结果时被中断，需要设置当前调用线程的中断标记位
+                Thread.currentThread().interrupt();
+            }
+
+            if (call.error != null) {
+                if (call.error instanceof RemoteException) {
+                    // 远程异常
+                    call.error.fillInStackTrace();
+                    throw call.error;
+                } else {
+                    // 本地异常
+                    InetSocketAddress address = connection.getServer();
+                    Class<? extends Throwable> clazz = call.error.getClass();
+                    try {
+                        Constructor<? extends Throwable> ctor = clazz.getConstructor(String.class);
+                        String msg = "Call From " + InetAddress.getLocalHost()
+                                + " to " + address.getHostName() + ":" + address.getPort()
+                                + " failed on exception: " + call.error;
+                        Throwable t = ctor.newInstance(msg);
+                        t.initCause(call.error);
+                        throw t;
+                    } catch (Throwable e) {
+                        LOG.warn("Unable to construct exception of type " +
+                                clazz + ": it has no (String) constructor", e);
+                        throw call.error;
+                    }
+                }
+            } else {
+                return call.getRpcResponse();
+            }
+        }
     }
 
     private class Connection extends Thread {
@@ -145,8 +326,12 @@ public class Client {
 
         /** 标识是否应该关闭连接，默认值： false */
         private AtomicBoolean shouldCloseConnection = new AtomicBoolean();
+        /** 关闭的原因 */
+        private IOException closeException;
         /** I/O 活动的最新时间 */
         private AtomicLong lastActivity = new AtomicLong();
+
+        private final Object sendRpcRequestLock = new Object();
 
         private Hashtable<Integer, Call> calls = new Hashtable<>();
 
@@ -197,7 +382,7 @@ public class Client {
                 return false;
             }
             calls.put(call.id, call);
-            //todo 更新run方法时再添加通知
+            notify();
             return true;
         }
 
@@ -350,20 +535,264 @@ public class Client {
                     + curRetries + " time(s); maxRetries=" + maxRetries);
         }
 
+        private synchronized boolean waitForWork() {
+            if (calls.isEmpty() && !shouldCloseConnection.get() && running.get()) {
+                long timeout = maxIdleTime -
+                        (System.currentTimeMillis() - lastActivity.get());
+                if (timeout > 0) {
+                    try {
+                        // 如果 calls 为空，先等待一段时间
+                        wait(timeout);
+                    } catch (InterruptedException e) {
+                        // 被中断属于正常现象， 无需报警
+                    }
+                }
+            }
+
+            if (!calls.isEmpty() && !shouldCloseConnection.get() && running.get()) {
+                return true;
+            } else if (shouldCloseConnection.get()) {
+                return false;
+            } else if (calls.isEmpty()) {
+                // 没有了 calls ，需要终止连接
+                markClosed(null);
+                return false;
+            } else {
+                // running 状态已经为 false，但仍然有 calls
+                markClosed(new IOException("", new InterruptedException()));
+                return false;
+            }
+        }
+
         @Override
         public void run() {
+            if (LOG.isDebugEnabled()) {
+                LOG.debug(getName() + ": starting, having connections " +
+                        connections.size());
+            }
 
+            try {
+                while (waitForWork()) {
+                    receiveRpcResponse();
+                }
+            } catch (Throwable t) {
+                LOG.warn("Unexpected error reading responses on connection " + this, t);
+                markClosed(new IOException("Error reading responses", t));
+            }
+
+            close();
+
+            if (LOG.isDebugEnabled()) {
+                LOG.debug(getName() + ": stopped, remaining connections "
+                        + connections.size());
+            }
+        }
+
+        /**
+         * 向服务端发送 rpc 请求
+         * @param call 包含 rpc 调用相关的信息
+         */
+        public void sendRpcRequest(final Call call)
+                throws IOException, InterruptedException {
+            if (shouldCloseConnection.get()) {
+                return;
+            }
+
+            /**
+             * 序列化需要被发送出去的信息，这里由实际调用方法的线程来完成
+             * 实际发送前各个线程可以并行地准备（序列化）待发送的信息，而不是发送线程（sendParamsExecutor）
+             * 这样做的好处一方面减少锁的粒度，另一方面序列化过程中抛异常每个线程可以单独、独立地报告
+             *
+             * 发送的格式:
+             * 0) 下面 1、2 两项的长度之和，4字节
+             * 1) RpcRequestHeader
+             * 2) RpcRequest
+             * 1、2两项在下面代码序列化
+             */
+            final ByteArrayOutputStream bo = new ByteArrayOutputStream();
+            final DataOutputStream tmpOut = new DataOutputStream(bo);
+            // 暂时没有重试机制，因此参数 retryCount=-1
+            RpcRequestHeaderProto header = ProtoUtil.makeRpcRequestHeader(
+                    call.rpcKind, RpcRequestHeaderProto.OperationProto.RPC_FINAL_PACKET,
+                    call.id, -1, clientId);
+            header.writeDelimitedTo(tmpOut);
+            call.rpcRequest.write(tmpOut);
+
+            synchronized (sendRpcRequestLock) {
+                Future<?> senderFuture = sendParamsExecutor.submit(new Runnable() {
+                    @Override
+                    public void run() {
+                        //多线程并发调用服务端，需要锁住发送流 out
+                        try {
+                            synchronized (Connection.this.out) {
+                                if (shouldCloseConnection.get()) {
+                                    return;
+                                }
+                                if (LOG.isDebugEnabled()) {
+                                    LOG.debug(getName() + " sending #" + call.id);
+                                }
+
+                                byte[] data = bo.toByteArray();
+                                int dataLen = bo.size();
+                                out.writeInt(dataLen);
+                                out.write(data, 0, dataLen);
+                                out.flush();
+                            }
+                        } catch (IOException e) {
+                            /**
+                             * 如果在这里发生异常，将处于不可恢复状态
+                             * 因此，关闭连接，终止所有未完成的调用
+                             */
+                            markClosed(e);
+                        } finally {
+                            IOUtils.closeStream(tmpOut);
+                        }
+                    }
+                });
+
+                try {
+                    senderFuture.get();
+                } catch (ExecutionException e) {
+                    // Java 有异常链，该异常可能是另一个异常引起的
+                    // 调用 getCause 方法获得真正的异常
+                    Throwable cause = e.getCause();
+
+                    /**
+                     * 这里只能是运行时异常，因为 IOException 异常以及在上面的匿名内部类捕获了
+                     */
+                    if (cause instanceof RuntimeException) {
+                        throw (RuntimeException) cause;
+                    } else {
+                        throw new RuntimeException("unexpected checked exception", cause);
+                    }
+                }
+            }
+        }
+
+        private void receiveRpcResponse() {
+            if (shouldCloseConnection.get()) {
+                return;
+            }
+            touch();
+
+            try {
+                // 读取响应信息的总长度
+                int totalLen = in.read();
+                // 从响应信息中反序列化 header
+                RpcResponseHeaderProto header =
+                        RpcResponseHeaderProto.parseDelimitedFrom(in);
+                // check header的正确性
+                checkResponse(header);
+
+                // 计算 header 占用的总长度
+                int headerLen = header.getSerializedSize();
+                headerLen += CodedOutputStream.computeRawVarint32Size(headerLen);
+
+                int callId = header.getCallId();
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug(getName() + " got value #" + callId);
+                }
+
+                Call call = calls.get(callId);
+                RpcResponseHeaderProto.RpcStatusProto status = header.getStatus();
+                // 判断 RPC 调用是否成功
+                if (status == RpcResponseHeaderProto.RpcStatusProto.SUCCESS) {
+                    Writable value = ReflectionUtils.newInstance(valueClass);
+                    value.readFields(in);
+                    calls.remove(callId);
+                    call.setRpcResponse(value);
+                } else {
+                    /**
+                     * 对于 RPC 调用错误的情况，需要获取具体的错误类、错误码、错误信息和栈踪
+                     */
+                    if (totalLen != headerLen) {
+                        throw new RpcClientException(
+                                "RPC response length mismatch on rpc error");
+                    }
+
+                    String exceptionClassName =
+                            header.hasExceptionClassName() ?
+                                    header.getExceptionClassName() : "ServerDidNotSetExceptionClassName";
+                    String errMsg =
+                            header.hasErrorMsg() ?
+                                    header.getErrorMsg() : "ServerDidNotSetErrorMsg";
+                    final RpcResponseHeaderProto.RpcErrorCodeProto errCode =
+                            header.hasErrorDetail() ?
+                                    header.getErrorDetail() : null;
+                    if (errCode == null) {
+                        LOG.warn("Detailed error code not set by server on rpc error");
+                    }
+                    RemoteException re =
+                            new RemoteException(exceptionClassName, errMsg, errCode);
+                    if (status == RpcResponseHeaderProto.RpcStatusProto.ERROR) {
+                        // 对于非致命错误，报告异常值，不必关闭连接
+                        calls.remove(callId);
+                        call.setException(re);
+                    } else {
+                        // 致命错误，需要关闭当前连接
+                        markClosed(re);
+                    }
+                }
+            } catch (IOException e) {
+                markClosed(e);
+            }
         }
 
         private synchronized void markClosed(IOException e) {
-
+            if (shouldCloseConnection.compareAndSet(false, true)) {
+                closeException = e;
+                notifyAll();
+            }
         }
 
         /**
          * 关闭连接
          */
         private synchronized void close() {
+            if (!shouldCloseConnection.get()) {
+                LOG.error("The connection is not in the closed state");
+                return;
+            }
 
+            // 释放连接资源
+            synchronized (connections) {
+                if (connections.get(remoteId) == this) {
+                    connections.remove(remoteId);
+                }
+            }
+
+            IOUtils.closeStream(in);
+            IOUtils.closeStream(out);
+
+            if (closeException == null) {
+                if (!calls.isEmpty()) {
+                    LOG.warn("A connection is closed for no cause and calls are not empty");
+                    closeException = new IOException("Unexpected closed connection");
+                    cleanupCalls();
+                }
+            } else {
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("closing ipc connection to " + server + ": " +
+                            closeException.getMessage(),closeException);
+                }
+                cleanupCalls();
+            }
+            closeConnection();
+            if (LOG.isDebugEnabled()) {
+                LOG.debug(getName() + ": closed");
+            }
+        }
+
+        /**
+         * remove所有的 call，并设置为本地异常
+         */
+        private void cleanupCalls() {
+            Iterator<Map.Entry<Integer, Call>> iter = calls.entrySet().iterator();
+            while (iter.hasNext()) {
+                Call call = iter.next().getValue();
+                iter.remove();
+                call.setException(closeException);
+            }
         }
     }
 
