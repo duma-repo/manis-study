@@ -1,6 +1,7 @@
 package com.cnblogs.duma.ipc;
 
 import com.cnblogs.duma.conf.Configuration;
+import com.cnblogs.duma.util.ReflectionUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -70,8 +71,7 @@ public class RPC {
 
             try {
                 // 通过反射实例化RpcEngine的实现类
-                Constructor constructor =  clazz.getDeclaredConstructor();
-                engine = (RpcEngine)constructor.newInstance();
+                engine = (RpcEngine)ReflectionUtils.newInstance(clazz);
                 PROTOCOL_ENGINS.put(protocol, engine);
             } catch (Exception e) {
                 throw new RuntimeException(e);
