@@ -26,6 +26,13 @@ import java.net.InetSocketAddress;
 public class ProtobufRpcEngine implements RpcEngine {
     public static  final Log LOG = LogFactory.getLog(ProtobufRpcEngine.class);
 
+    static {
+        com.cnblogs.duma.ipc.Server.registerProtocolEngine(
+                RPC.RpcKind.RPC_PROTOCOL_BUFFER,
+                RpcRequestWrapper.class,
+                new Server.ProtobufRpcInvoker());
+    }
+
     @Override
     @SuppressWarnings("unchecked")
     public <T> T getProxy(Class<T> protocol,
@@ -337,6 +344,63 @@ public class ProtobufRpcEngine implements RpcEngine {
             super(bindAddress, port, numHandlers, numReaders, queueSizePerHandler, conf);
             this.verbose = verbose;
             registerProtocolAndImpl(RPC.RpcKind.RPC_PROTOCOL_BUFFER, protocol, protocolImpl);
+        }
+
+        static class ProtobufRpcInvoker implements RPC.RpcInvoker {
+            @Override
+            public Writable call(RPC.Server server, String protocol,
+                                 Writable rpcRequest, long receiveTime)
+                    throws Exception {
+                RpcRequestWrapper request = (RpcRequestWrapper) rpcRequest;
+                RequestHeaderProto requestHeader = request.requestHeader;
+                String methodName = requestHeader.getMethodName();
+                String protoName = requestHeader.getDeclaringClassProtocolName();
+                long clientVer = requestHeader.getClientProtocolVersion();
+                if (server.verbose) {
+                    LOG.info("Call: protocol=" + protocol + ", method=" + methodName);
+                }
+                ProtoClassProtoImpl protoClassImpl = RPC.getProtocolImp(RPC.RpcKind.RPC_PROTOCOL_BUFFER,
+                        server, protoName, clientVer);
+                BlockingService service = (BlockingService) protoClassImpl.protocolImpl;
+                Descriptors.MethodDescriptor methodDescriptor =
+                        service.getDescriptorForType().findMethodByName(methodName);
+                if (methodDescriptor == null) {
+                    String msg = "Unknown method " + methodName
+                            + " called on " + protocol + " protocol.";
+                    LOG.warn(msg);
+                    throw new RpcNoSuchMethodException(msg);
+                }
+                Message protoType = service.getRequestPrototype(methodDescriptor);
+                Message param = protoType.newBuilderForType()
+                        .mergeFrom(request.theRequestRead)
+                        .build();
+                Message result;
+                long startTime = System.currentTimeMillis();
+                // 从接受请求到调用前的时间
+                int qTime = (int) (startTime - receiveTime);
+                Exception exception = null;
+                try {
+                    result = service.callBlockingMethod(methodDescriptor, null, param);
+                } catch (ServiceException se) {
+                    // callBlockingMethod 有可能抛出该异常
+                    exception = (Exception) se.getCause();
+                    throw exception;
+                } catch (Exception e) {
+                    exception = e;
+                    throw exception;
+                } finally {
+                    long processTime = (int) (System.currentTimeMillis() - startTime);
+                    if (LOG.isDebugEnabled()) {
+                        String msg = "Served: " + methodName + " queueTime= " + qTime +
+                                " processingTime= " + processTime;
+                        if (exception != null) {
+                            msg += " exception= " + exception.getClass().getSimpleName();
+                        }
+                        LOG.debug(msg);
+                    }
+                }
+                return new RpcResponseWrapper(result);
+            }
         }
     }
 }

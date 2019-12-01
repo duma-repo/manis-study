@@ -1,10 +1,13 @@
 package com.cnblogs.duma.ipc;
 
 import com.cnblogs.duma.conf.Configuration;
+import com.cnblogs.duma.io.Writable;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
 import java.io.*;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * @author duma
@@ -19,6 +22,39 @@ public abstract class Server {
     volatile private boolean running = true;
 
     private Configuration conf;
+
+    static class RpcKindMapValue {
+        final Class<? extends Writable> rpcRequestWrapperClass;
+        final RPC.RpcInvoker rpcInvoker;
+
+        RpcKindMapValue(Class<? extends Writable> rpcRequestWrapperClass,
+                        RPC.RpcInvoker rpcInvoker) {
+            this.rpcRequestWrapperClass = rpcRequestWrapperClass;
+            this.rpcInvoker = rpcInvoker;
+        }
+    }
+    static Map<RPC.RpcKind, RpcKindMapValue> rpcKindMap = new HashMap<>();
+
+    /**
+     * 将RpcKind对象和RpcKindMapValue对象组成的键值对写入 rpcKindMap 集合
+     * @param rpcKind RPC.RpcKind 对象
+     * @param rpcRequestWrapperClass 调用请求的封装类的Class对象
+     * @param rpcInvoker 服务端方法调用类对象
+     */
+    static void registerProtocolEngine(RPC.RpcKind rpcKind,
+                                       Class<? extends Writable> rpcRequestWrapperClass,
+                                       RPC.RpcInvoker rpcInvoker) {
+        RpcKindMapValue rpcKindMapValue =
+                new RpcKindMapValue(rpcRequestWrapperClass, rpcInvoker);
+        RpcKindMapValue old = rpcKindMap.put(rpcKind, rpcKindMapValue);
+        if (old != null) {
+            rpcKindMap.put(rpcKind, old);
+            throw new IllegalArgumentException("ReRegistration of rpcKind: " +  rpcKind);
+        }
+        LOG.debug("rpcKind=" + rpcKind +
+                ", rpcRequestWrapperClass=" + rpcRequestWrapperClass +
+                ", rpcInvoker=" + rpcInvoker);
+    }
 
     /**
      * Server 类构造方法

@@ -4,6 +4,7 @@ import com.cnblogs.duma.conf.CommonConfigurationKeysPublic;
 import com.cnblogs.duma.conf.Configuration;
 import com.cnblogs.duma.ipc.ProtobufRpcEngine;
 import com.cnblogs.duma.ipc.RPC;
+import com.cnblogs.duma.ipc.SerializableRpcEngine;
 import com.cnblogs.duma.protocol.ManagerManisDbProtocolSerializable;
 import com.cnblogs.duma.protocol.proto.ClientManisDbProtocolProtos;
 import com.cnblogs.duma.protocolPB.ClientManisDbProtocolPB;
@@ -39,6 +40,9 @@ public class ManisDbRpcServer implements ManisDbProtocols {
                 clientProtocolServerTranslator = new ClientManisdbProtocolServerSideTranslatorPB(this);
         BlockingService clientMdPbService =
                 ClientManisDbProtocolProtos.ClientManisDbProtocol.newReflectiveBlockingService(clientProtocolServerTranslator);
+
+        /** 手动初始化 SerializableRpcEngine 类 */
+        SerializableRpcEngine.ensureInitialized();
 
         InetSocketAddress protoBufRpcServerAddr = ManisDb.getProtoBufRpcServerAddress(conf);
         String bindHost = protoBufRpcServerAddr.getHostName();
