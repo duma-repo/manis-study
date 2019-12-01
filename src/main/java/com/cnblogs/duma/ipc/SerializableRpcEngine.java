@@ -19,6 +19,23 @@ import java.net.InetSocketAddress;
 public class SerializableRpcEngine implements RpcEngine {
     public static final Log LOG = LogFactory.getLog(SerializableRpcEngine.class);
 
+    /** 用来判断类是否被初始化 */
+    private static boolean isInitialized = false;
+
+    public static synchronized void ensureInitialized() {
+        if (!isInitialized) {
+            initialize();
+        }
+    }
+
+    private static synchronized void initialize() {
+        com.cnblogs.duma.ipc.Server.registerProtocolEngine(
+                RPC.RpcKind.RPC_SERIALIZABLE,
+                Invocation.class,
+                new Server.SerializableRpcInvoker());
+        isInitialized = true;
+    }
+
     private static class Invocation implements Writable {
         private String methodName;
         private Class<?>[] parameterClasses;

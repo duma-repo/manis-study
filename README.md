@@ -31,3 +31,5 @@
 [11. 搭建服务端框架](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf59f265da5b827d9082)
 
 [12. serializable序列方式的方法调用](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf636fb9a04e3a7f74d8)
+
+[13. protobuf序列方式的方法调用](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf6a518825579a1f9c20)
