@@ -176,5 +176,64 @@ public class SerializableRpcEngine implements RpcEngine {
                 , Configuration conf) throws IOException {
             super(bindAddress, port, numHandlers, numReaders, queueSizePerHandler, conf);
         }
+
+        static class SerializableRpcInvoker implements RPC.RpcInvoker {
+            @Override
+            public Writable call(RPC.Server server, String protocol,
+                                 Writable rpcRequest, long receiveTime) throws Exception {
+                Invocation request = (Invocation) rpcRequest;
+
+                String methodName = request.getMethodName();
+                String protoName = request.getDeclaringClassProtocolName();
+                long clientVer = request.getClientVersion();
+                if (server.verbose) {
+                    LOG.info("Call: protocol=" + protocol + ", method=" + methodName);
+                }
+                ProtoClassProtoImpl protocolImpl = RPC.getProtocolImp(RPC.RpcKind.RPC_SERIALIZABLE
+                        , server, protoName, clientVer);
+
+                long startTime = System.currentTimeMillis();
+                int qTime = (int) (startTime - receiveTime);
+                Exception exception = null;
+                try {
+                    Method method = protocolImpl.protocolClass
+                            .getMethod(methodName, request.getParameterClasses());
+                    method.setAccessible(true);
+                    Object value =
+                            method.invoke(protocolImpl.protocolImpl, request.getParameters());
+                    return new ObjectWritable(method.getReturnType(), value);
+                } catch (InvocationTargetException e) {
+                    Throwable target = e.getTargetException();
+                    if (target instanceof IOException) {
+                        exception = (IOException) target;
+                        throw (IOException) target;
+                    } else {
+                        IOException ioe = new IOException(target.toString());
+                        ioe.setStackTrace(target.getStackTrace());
+                        exception = ioe;
+                        throw ioe;
+                    }
+                } catch (Throwable e) {
+                    if (! (e instanceof IOException)) {
+                        LOG.error("Unexpected throwable object ", e);
+                    }
+                    IOException ioe = new IOException(e.toString());
+                    ioe.setStackTrace(e.getStackTrace());
+                    exception = ioe;
+                    throw ioe;
+                } finally {
+                    int processingTime = (int) (System.currentTimeMillis() - startTime);
+                    if (LOG.isDebugEnabled()) {
+                        String msg = "Served: " + request.getMethodName() +
+                                " queueTime= " + qTime +
+                                " procesingTime= " + processingTime;
+                        if (exception != null) {
+                            msg += " exception= " + exception.getClass().getSimpleName();
+                        }
+                        LOG.debug(msg);
+                    }
+                }
+            }
+        }
     }
 }
