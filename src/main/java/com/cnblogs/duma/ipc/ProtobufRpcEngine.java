@@ -7,10 +7,7 @@ import com.cnblogs.duma.ipc.protobuf.ProtobufRpcEngineProtos.RequestHeaderProto;
 import com.cnblogs.duma.ipc.protobuf.ProtobufRpcEngineProtos;
 import com.cnblogs.duma.ipc.protobuf.RpcHeaderProtos.RpcRequestHeaderProto;
 import com.cnblogs.duma.util.ProtoUtil;
-import com.google.protobuf.CodedOutputStream;
-import com.google.protobuf.GeneratedMessage;
-import com.google.protobuf.Message;
-import com.google.protobuf.ServiceException;
+import com.google.protobuf.*;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -306,6 +303,40 @@ public class ProtobufRpcEngine implements RpcEngine {
                         "getLength on uninitialized RpcWrapper");
             }
             return CodedOutputStream.computeRawVarint32Size(resLen) + resLen;
+        }
+    }
+
+    @Override
+    public RPC.Server getServer(Class<?> protocol, Object instance,
+                                String bindAddress, int port,
+                                int numHandlers, int numReaders,
+                                int queueSizePerHandler, boolean verbose,
+                                Configuration conf) throws IOException {
+        return new Server(protocol, instance, bindAddress, port,
+                numHandlers, numReaders, queueSizePerHandler, verbose, conf);
+    }
+
+    private static class Server extends RPC.Server {
+        /**
+         * 构造 protocol buffer rpc server
+         * @param protocol 接口（协议）
+         * @param protocolImpl 接口（协议）的实例
+         * @param bindAddress 服务端地址
+         * @param port 服务端端口
+         * @param numHandlers handler 线程个数
+         * @param numReaders reader 线程个数
+         * @param queueSizePerHandler 每个 Handler 期望的消息队列大小
+         * @param verbose 是否对调用信息打log
+         * @param conf Configuration 对象
+         */
+        public Server(Class<?> protocol, Object protocolImpl,
+                      String bindAddress, int port,
+                      int numHandlers, int numReaders,
+                      int queueSizePerHandler, boolean verbose,
+                      Configuration conf) throws IOException {
+            super(bindAddress, port, numHandlers, numReaders, queueSizePerHandler, conf);
+            this.verbose = verbose;
+            registerProtocolAndImpl(RPC.RpcKind.RPC_PROTOCOL_BUFFER, protocol, protocolImpl);
         }
     }
 }

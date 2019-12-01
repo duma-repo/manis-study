@@ -37,4 +37,12 @@ public class CommonConfigurationKeysPublic {
     public static final String  IPC_PING_INTERVAL_KEY = "ipc.ping.interval";
     /** IPC_PING_INTERVAL_KEY 的默认值，1min */
     public static final int     IPC_PING_INTERVAL_DEFAULT = 60000;
+
+    /** Manis rpc 服务端 handler 线程个数 */
+    public static final String  MANIS_HANDLER_COUNT_KEY = "dfs.namenode.handler.count";
+    /** MANIS_HANDLER_COUNT_KEY 的默认值，10 */
+    public static final int     MANIS_HANDLER_COUNT_DEFAULT = 10;
+
+    /** Protobuf RPC Server的uri */
+    public static final String  MANIS_RPC_PROTOBUF_KEY = "manis.rpc.uri.protobuf";
 }

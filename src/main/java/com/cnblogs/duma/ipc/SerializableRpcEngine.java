@@ -8,6 +8,7 @@ import org.apache.commons.logging.LogFactory;
 
 import javax.net.SocketFactory;
 import java.io.*;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.net.InetSocketAddress;
@@ -158,5 +159,22 @@ public class SerializableRpcEngine implements RpcEngine {
 
         final Invoker invoker = new Invoker(protocol, address, conf, factory, rpcTimeOut);
         return (T) Proxy.newProxyInstance(protocol.getClassLoader(), new Class[]{protocol}, invoker);
+    }
+
+    @Override
+    public RPC.Server getServer(Class<?> protocol, Object instance,
+                                String bindAddress, int port,
+                                int numHandlers, int numReaders, int queueSizePerHandler,
+                                boolean verbose, Configuration conf) throws IOException {
+        return null;
+    }
+
+    public static class Server extends RPC.Server {
+
+        public Server(String bindAddress, int port, int numHandlers
+                , int numReaders, int queueSizePerHandler
+                , Configuration conf) throws IOException {
+            super(bindAddress, port, numHandlers, numReaders, queueSizePerHandler, conf);
+        }
     }
 }
