@@ -41,6 +41,21 @@ public class RPC {
             this.value = value;
         }
     }
+
+    interface RpcInvoker {
+        /**
+         * 服务端实现该方法，用来完成客户端请求的方法调用
+         * @param server RPC.Server对象，用来获取服务端的属性
+         * @param protocol 客户端请求的接口（协议）
+         * @param rpcRequest 客户端调用请求的封装类对象（反序列化后的）
+         * @param receiveTime 开始处理本次 RPC 请求的时间
+         * @return 方法调用的返回值
+         * @throws Exception
+         */
+        Writable call(Server server, String protocol,
+                      Writable rpcRequest, long receiveTime) throws Exception;
+    }
+
     /**
      * 接口与RPC引擎对应关系的缓存
      */
@@ -242,6 +257,21 @@ public class RPC {
                     this.numHandlers, this.numReaders, this.queueSizePerHandler,
                     this.verbose, this.conf);
         }
+    }
+
+    static Server.ProtoClassProtoImpl getProtocolImp(
+            RPC.RpcKind rpcKind
+            , RPC.Server server,
+            String protocolName,
+            long clientVersion) throws RpcServerException {
+        Server.ProtoNameVer pv = new Server.ProtoNameVer(protocolName, clientVersion);
+        Server.ProtoClassProtoImpl impl =
+                server.getProtocolImplMap(rpcKind).get(pv);
+        if (impl == null) {
+            throw new RpcNoSuchProtocolException(
+                    "Unknown protocol: " + protocolName);
+        }
+        return impl;
     }
 
     /**
