@@ -16,9 +16,9 @@ public class NetUtils {
 
     /**
      * {@link Socket#connect(SocketAddress, int)} 的替代函数
-     * 对于没有关联 channel 的一般 socket，调用 <code>socket.connect(endpoint, timeout)</code> 进行连接
-     * 如果 <code>socket.getChannel()</code> 返回非空的 channel, 便使用 Hadoop selector 的方式进行连接
-     * Hadoop 自定义 selector 主要是为了获得连接的控制权
+     * 调用 <code>socket.connect(endpoint, timeout)</code> 进行连接
+     * Hadoop 中有自定义的 SocketFactory 它的连接方式与这里略有不同，
+     * 并且为了获得连接的控制权 Hadoop 还自定义了 selector
      *
      * @param socket socket
      * @param endPoint 远程地址

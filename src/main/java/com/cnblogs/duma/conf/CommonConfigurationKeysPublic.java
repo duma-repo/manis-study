@@ -45,4 +45,35 @@ public class CommonConfigurationKeysPublic {
 
     /** Protobuf RPC Server的uri */
     public static final String  MANIS_RPC_PROTOBUF_KEY = "manis.rpc.uri.protobuf";
+
+    /** RPC 服务端 socket 读线程的数量 */
+    public static final String  IPC_SERVER_RPC_READ_THREADS_KEY =
+            "ipc.server.read.threadpool.size";
+    /** IPC_SERVER_RPC_READ_THREADS_KEY 的默认值，1个 */
+    public static final int     IPC_SERVER_RPC_READ_THREADS_DEFAULT = 1;
+
+    /** 队列中调用的数量 */
+    public static final String  IPC_SERVER_HANDLER_QUEUE_SIZE_KEY =
+            "ipc.server.handler.queue.size";
+    /** IPC_SERVER_HANDLER_QUEUE_SIZE_KEY 的默认值，100个 */
+    public static final int     IPC_SERVER_HANDLER_QUEUE_SIZE_DEFAULT = 100;
+
+    public static final String IPC_MAXIMUM_DATA_LENGTH =
+            "ipc.maximum.data.length";
+    /** IPC_MAXIMUM_DATA_LENGTH 的默认值，64MB */
+    public static final int IPC_MAXIMUM_DATA_LENGTH_DEFAULT = 64 * 1024 * 1024;
+
+    /** 响应大小大于该值将打 log */
+    public static final String  IPC_SERVER_RPC_MAX_RESPONSE_SIZE_KEY =
+            "ipc.server.max.response.size";
+    /** IPC_SERVER_RPC_MAX_RESPONSE_SIZE_KEY 的默认值，1MB */
+    public static final int     IPC_SERVER_RPC_MAX_RESPONSE_SIZE_DEFAULT =
+            1024*1024;
+
+    /** 每一个 socket reader pending 队列得大小 */
+    public static final String IPC_SERVER_RPC_READ_CONNECTION_QUEUE_SIZE_KEY =
+            "ipc.server.read.connection-queue.size";
+    /** IPC_SERVER_RPC_READ_CONNECTION_QUEUE_SIZE 的大小，默认值：100 */
+    public static final int IPC_SERVER_RPC_READ_CONNECTION_QUEUE_SIZE_DEFAULT =
+            100;
 }
