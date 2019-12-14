@@ -76,4 +76,28 @@ public class CommonConfigurationKeysPublic {
     /** IPC_SERVER_RPC_READ_CONNECTION_QUEUE_SIZE 的大小，默认值：100 */
     public static final int IPC_SERVER_RPC_READ_CONNECTION_QUEUE_SIZE_DEFAULT =
             100;
+
+    /** 服务端 accept 客户端连接，监听队列的长度 */
+    public static final String  IPC_SERVER_LISTEN_QUEUE_SIZE_KEY =
+            "ipc.server.listen.queue.size";
+    /** IPC_SERVER_LISTEN_QUEUE_SIZE_KEY，默认值 128 */
+    public static final int     IPC_SERVER_LISTEN_QUEUE_SIZE_DEFAULT = 128;
+
+    /** 空闲连接的阈值，如果大于该阈值则关闭空闲连接 */
+    public static final String  IPC_CLIENT_IDLETHRESHOLD_KEY =
+            "ipc.client.idlethreshold";
+    /** IPC_CLIENT_IDLETHRESHOLD_KEY 的默认值，200 */
+    public static final int     IPC_CLIENT_IDLETHRESHOLD_DEFAULT = 200;
+
+    /** 服务端扫描空闲连接的时间间隔 */
+    public static final String IPC_CLIENT_CONNECTION_IDLESCANINTERVAL_KEY =
+            "ipc.client.connection.idle-scan-interval.ms";
+    /** IPC_SERVER_CONNECTION_IDLE_SCAN_INTERVAL_KEY 的默认值，10s */
+    public static final int IPC_CLIENT_CONNECTION_IDLESCANINTERVAL_DEFAULT =
+            10000;
+
+    /** 关闭空闲连接的最大值 */
+    public static final String  IPC_CLIENT_KILL_MAX_KEY = "ipc.client.kill.max";
+    /** IPC_CLIENT_KILL_MAX_KEY 的默认值，10 */
+    public static final int     IPC_CLIENT_KILL_MAX_DEFAULT = 10;
 }
