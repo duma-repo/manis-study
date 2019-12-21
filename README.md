@@ -4,7 +4,7 @@
 
 ![](https://user-gold-cdn.xitu.io/2019/10/21/16deeefa694211d1?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
 
-代码已更新至第十一节
+代码已更新至第十六节
 
 教程内容：
 
@@ -37,3 +37,5 @@
 [14. 搭建ipc.Server类框架](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf59f265da5b827d9082)
 
 [15. Listener模块——accept客户端连接](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf7cf265da5baa5b1263)
+
+[16. Reader 模块——多线程并行读请求](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf84e51d45249a5a80bd)
