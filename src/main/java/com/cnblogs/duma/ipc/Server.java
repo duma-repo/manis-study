@@ -9,6 +9,7 @@ import com.cnblogs.duma.ipc.protobuf.RpcHeaderProtos.*;
 import com.cnblogs.duma.ipc.protobuf.RpcHeaderProtos.RpcResponseHeaderProto.*;
 import com.cnblogs.duma.util.ProtoUtil;
 import com.cnblogs.duma.util.ReflectionUtils;
+import com.cnblogs.duma.util.StringUtils;
 import com.google.protobuf.Message;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -102,6 +103,11 @@ public abstract class Server {
             RpcHeaderProtos.RpcKindProto rpcKind) {
         RpcKindMapValue val = rpcKindMap.get(ProtoUtil.convertRpcKind(rpcKind));
         return (val == null) ? null : val.rpcRequestWrapperClass;
+    }
+
+    public static RPC.RpcInvoker getRpcInvoker(RPC.RpcKind rpcKind) {
+        RpcKindMapValue val = rpcKindMap.get(rpcKind);
+        return (val == null) ? null : val.rpcInvoker;
     }
 
     /**
@@ -201,6 +207,9 @@ public abstract class Server {
             wait();
         }
     }
+
+    public abstract Writable call(RPC.RpcKind rpcKind, String protocol,
+                                  Writable param, long receiveTime) throws Exception;
 
     private void closeConnection(Connection conn) {
         connectionManager.close(conn);
@@ -561,6 +570,69 @@ public abstract class Server {
         Handler(int instanceNumber) {
             this.setDaemon(true);
             this.setName("IPC Server handler " + instanceNumber + " on " + port);
+        }
+
+        @Override
+        public void run() {
+            LOG.debug(Thread.currentThread().getName() + ": starting.");
+            ByteArrayOutputStream buf = new ByteArrayOutputStream(10240);
+            while (running) {
+                try {
+                    final Call call = callQueue.take();
+                    if (LOG.isDebugEnabled()) {
+                        LOG.debug(Thread.currentThread().getName() + ": " + call +
+                                " for rpcKind " + call.rpcKind);
+                    }
+                    if (!call.connection.channel.isOpen()) {
+                        LOG.info(Thread.currentThread().getName() + ": skipped " + call);
+                        continue;
+                    }
+                    String errorClass = null;
+                    String error = null;
+                    RpcStatusProto returnStatus = RpcStatusProto.SUCCESS;
+                    RpcErrorCodeProto detailedErr = null;
+                    Writable value = null;
+
+                    try {
+                        value = call(call.rpcKind, call.connection.protocolName,
+                                call.rpcRequest, call.timestamp);
+                    } catch (Throwable e) {
+                        String logMsg = Thread.currentThread().getName() + ", call " + call;
+                        if (e instanceof RuntimeException || e instanceof Error) {
+                            // 抛出该类型的错误说明服务端自身出现问题
+                            LOG.warn(logMsg, e);
+                        } else {
+                            // 属于正常情况的异常抛出
+                            LOG.info(logMsg, e);
+                        }
+                        if (e instanceof RpcServerException) {
+                            RpcServerException rse = (RpcServerException) e;
+                            returnStatus = rse.getRpcStatusProto();
+                            detailedErr = rse.getRpcErrorCodeProto();
+                        } else {
+                            returnStatus = RpcStatusProto.ERROR;
+                            detailedErr = RpcErrorCodeProto.ERROR_APPLICATION;
+                        }
+                        errorClass = e.getClass().getName();
+                        error = StringUtils.stringifyException(e);
+                    }
+                    setupResponse(buf, call, returnStatus,
+                            detailedErr, value, errorClass, error);
+
+                    //如果 buf 占用空间太大则丢弃掉，重新将 buf 调到初始大小以释放堆内存
+                    if (buf.size() > maxRespSize) {
+                        LOG.info("Large response size " + buf.size() + " for call "
+                                + call.toString());
+                        buf = new ByteArrayOutputStream(10240);
+                    }
+                    responder.doResponse(call);
+                } catch (InterruptedException e) {
+                    LOG.info(Thread.currentThread().getName() + " unexpectedly interrupted", e);
+                } catch (Exception e) {
+                    LOG.info(Thread.currentThread().getName() + " caught an exception", e);
+                }
+            }
+            LOG.debug(Thread.currentThread().getName() + ": exiting");
         }
     }
 

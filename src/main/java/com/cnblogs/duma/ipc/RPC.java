@@ -380,5 +380,11 @@ public class RPC {
         public void addProtocol(RpcKind rpcKind, Class<?> protocolClass, Object protocolImpl) {
             registerProtocolAndImpl(rpcKind, protocolClass, protocolImpl);
         }
+
+        @Override
+        public Writable call(RpcKind rpcKind, String protocol,
+                             Writable param, long receiveTime) throws Exception {
+            return getRpcInvoker(rpcKind).call(this, protocol, param, receiveTime);
+        }
     }
 }
