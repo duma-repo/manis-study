@@ -1,5 +1,8 @@
 package com.cnblogs.duma.util;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
+
 public class StringUtils {
     /**
      * 将 byte 数组转成 16 进制字符串
@@ -21,5 +24,13 @@ public class StringUtils {
 
     public static String byteToHexString(byte[] bytes) {
         return byteToHexString(bytes, 0, bytes.length);
+    }
+
+    public static String stringifyException(Throwable e) {
+        StringWriter sw = new StringWriter();
+        PrintWriter printWriter = new PrintWriter(sw);
+        e.printStackTrace(printWriter);
+        printWriter.close();
+        return sw.toString();
     }
 }
