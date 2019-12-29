@@ -41,3 +41,5 @@
 [16. Reader 模块——多线程并行读请求](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf84e51d45249a5a80bd)
 
 [17. Handler 模块——多线程并行处理请求](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf8de51d4524e60e0de2)
+
+[18. Responder 模块——向客户端发送响应](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf95518825374b6a1674)
