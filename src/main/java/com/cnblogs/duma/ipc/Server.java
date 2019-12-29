@@ -10,6 +10,8 @@ import com.cnblogs.duma.ipc.protobuf.RpcHeaderProtos.RpcResponseHeaderProto.*;
 import com.cnblogs.duma.util.ProtoUtil;
 import com.cnblogs.duma.util.ReflectionUtils;
 import com.cnblogs.duma.util.StringUtils;
+import com.google.protobuf.ByteString;
+import com.google.protobuf.CodedOutputStream;
 import com.google.protobuf.Message;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -180,8 +182,50 @@ public abstract class Server {
      */
     private void setupResponse(ByteArrayOutputStream responseBuf,
                                Call call, RpcStatusProto status, RpcErrorCodeProto errorCode,
-                               Writable resValue, String errorClass, String error) {
+                               Writable resValue, String errorClass, String error) throws IOException {
+        responseBuf.reset();
+        DataOutputStream out = new DataOutputStream(responseBuf);
+        RpcResponseHeaderProto.Builder headerBuilder =
+                RpcResponseHeaderProto.newBuilder();
+        headerBuilder.setClientId(ByteString.copyFrom(call.clientId));
+        headerBuilder.setCallId(call.callId);
+        headerBuilder.setRetryCount(call.retryCount);
+        headerBuilder.setStatus(status);
+        headerBuilder.setServerIpcVersionNum(RpcConstants.CURRENT_VERSION);
 
+        if (status == RpcStatusProto.SUCCESS) {
+            RpcResponseHeaderProto header = headerBuilder.build();
+            final int headerLen = header.getSerializedSize();
+            int fullLength = CodedOutputStream.computeRawVarint32Size(headerLen) + headerLen;
+            try {
+                ByteArrayOutputStream bo = new ByteArrayOutputStream();
+                DataOutputStream tmpOut = new DataOutputStream(bo);
+                resValue.write(tmpOut);
+                byte[] data = bo.toByteArray();
+
+                fullLength += data.length;
+                out.write(fullLength);
+                header.writeDelimitedTo(out);
+                out.write(data, 0, data.length);
+            } catch (Throwable t) {
+                LOG.warn("Error serializing call response for call " + call, t);
+                // 序列化出错时，需要递归调用该函数，创建一个序列化错误的响应信息
+                setupResponse(responseBuf, call,
+                        RpcStatusProto.ERROR, RpcErrorCodeProto.ERROR_SERIALIZING_RESPONSE,
+                        null, t.getClass().getName(),
+                        StringUtils.stringifyException(t));
+            }
+        } else {
+            headerBuilder.setErrorDetail(errorCode);
+            headerBuilder.setExceptionClassName(errorClass);
+            headerBuilder.setErrorMsg(error);
+            RpcResponseHeaderProto header = headerBuilder.build();
+            int headerLen = header.getSerializedSize();
+            final int fullLength = CodedOutputStream.computeRawVarint32Size(headerLen) + headerLen;
+            out.write(fullLength);
+            header.writeDelimitedTo(out);
+        }
+        call.setResponse(ByteBuffer.wrap(responseBuf.toByteArray()));
     }
 
     /**
@@ -640,8 +684,229 @@ public abstract class Server {
      * 向客户端发送响应结果
      */
     private class Responder extends Thread {
-        void doResponse(Call call) throws IOException {
+        private final Selector writeSelector;
+        private int pending;
 
+        final static int PURGE_INTERVAL = 900000; // 15mins
+
+        Responder() throws IOException {
+            this.setName("IPC Server Responder");
+            this.setDaemon(true);
+            writeSelector = Selector.open();
+            pending = 0;
+        }
+
+        @Override
+        public void run() {
+            LOG.info(Thread.currentThread().getName() + ": starting.");
+            try {
+                doRunLoop();
+            } finally {
+                LOG.info("Stopping " + Thread.currentThread().getName());
+                try {
+                    writeSelector.close();
+                } catch (IOException ioe) {
+                    LOG.error("Couldn't close write selector in " + Thread.currentThread().getName(), ioe);
+                }
+            }
+        }
+
+        private void doRunLoop() {
+            long lastPurgeTime = 0;
+
+            while (running) {
+                try {
+                    // 如果有渠道正在注册，则等待
+                    waitPending();
+                    writeSelector.select(PURGE_INTERVAL);
+                    Iterator<SelectionKey> iter = writeSelector.selectedKeys().iterator();
+                    while (iter.hasNext()) {
+                        SelectionKey key = iter.next();
+                        iter.remove();
+                        try {
+                            if (key.isValid() && key.isWritable()) {
+                                doAsyncWrite(key);
+                            }
+                        } catch (IOException ioe) {
+                            LOG.info(Thread.currentThread().getName() + ": doAsyncWrite threw exception " + ioe);
+                        }
+                    }
+
+                    long now = System.currentTimeMillis();
+                    if (now < lastPurgeTime + PURGE_INTERVAL) {
+                        continue;
+                    }
+                    lastPurgeTime = now;
+
+                    if(LOG.isDebugEnabled()) {
+                        LOG.debug("Checking for old call responses.");
+                    }
+                    ArrayList<Call> calls = null;
+
+                    synchronized (writeSelector.keys()) {
+                        // 锁住 writeSelector.keys() 对象，防止新的 channel 注册
+                        calls = new ArrayList<>(writeSelector.keys().size());
+                        iter = writeSelector.keys().iterator();
+                        while (iter.hasNext()) {
+                            SelectionKey key = iter.next();
+                            Call call = (Call)key.attachment();
+                            if (call != null && key.channel() == call.connection.channel) {
+                                calls.add(call);
+                            }
+                        }
+                    }
+
+                    // 如果有长时间（超过15min）未发送的 calls，关闭连接，丢弃它们
+                    for (Call call : calls) {
+                        doPurge(call, now);
+                    }
+                } catch (OutOfMemoryError e) {
+                    // 如果太多事件需要响应，可能会内存溢出
+                    LOG.warn("Out of Memory in server select", e);
+                    try { Thread.sleep(60000); } catch (Exception ie) {}
+                } catch (Exception e) {
+                    LOG.warn("Exception in Responder", e);
+                }
+            }
+        }
+
+        private void doPurge(Call call, long now) {
+            LinkedList<Call> responseQueue = call.connection.responseQueue;
+            synchronized (responseQueue) {
+                ListIterator<Call> iter = responseQueue.listIterator(0);
+                while (iter.hasNext()) {
+                    call = iter.next();
+                    if (now > call.timestamp + PURGE_INTERVAL) {
+                        closeConnection(call.connection);
+                        break;
+                    }
+                }
+            }
+        }
+
+        private void doAsyncWrite(SelectionKey key) throws IOException {
+            Call call = (Call) key.attachment();
+            if (call == null) {
+                return;
+            }
+            if (call.connection.channel != key.channel()) {
+                throw new IOException("doAsyncWrite: bad channel");
+            }
+            synchronized (call.connection.responseQueue) {
+                if (processResponse(call.connection.responseQueue, false)) {
+                    // 如果队列 call 处理完毕，清除 OP_WRITE
+                    try {
+                        key.interestOps(0);
+                    } catch (CancelledKeyException e) {
+                        //Listener 或者 Reader 线程可能关闭了该 socket
+                        LOG.warn("Exception while changing ops : " + e);
+                    }
+                }
+            }
+        }
+
+        private boolean processResponse(LinkedList<Call> responseQueue,
+                                        boolean isHandler) throws IOException {
+            boolean error = true;
+            boolean done = false;
+            int numElements = 0;
+            Call call = null;
+
+            try {
+                numElements = responseQueue.size();
+                if (numElements == 0) {
+                    error = false;
+                    return true;
+                }
+                // 取出第一个 Call 对象，发送响应信息
+                call =  responseQueue.removeFirst();
+                SocketChannel channel = call.connection.channel;
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug(Thread.currentThread().getName() + ": responding to " + call);
+                }
+                // 将响应信息发送到channel
+                int numBytes = channelWrite(channel, call.response);
+                if (numBytes < 0) {
+                    return true;
+                }
+
+                if (!call.response.hasRemaining()) {
+                    call.response = null;
+                    call.connection.decRpcCount();
+                    if (numElements == 1) {
+                        done = true;
+                    } else {
+                        done = false;
+                    }
+                    if (LOG.isDebugEnabled()) {
+                        LOG.debug(Thread.currentThread().getName() + ": responding to " + call
+                                + " Wrote " + numBytes + " bytes.");
+                    }
+                } else {
+                    // 说明一次性没有写完，继续放入队列中
+                    call.connection.responseQueue.addFirst(call);
+
+                    /**
+                     * 如果 isHandler = true 说明队列只有当前处理的一个 Call 对象，如果本次未处理完，需要重新
+                     * 放入队列给该渠道注册一个 OP_WRITE 事件，后续由 Responder 线程继续处理
+                     */
+                    if (isHandler) {
+                        call.timestamp = System.currentTimeMillis();
+
+                        // 防止 wakeup 后 register 之前再次进入 select 等待，需要加锁，让 responder 线程等待
+                        incPending();
+                        try {
+                            // 如果 writeSelector 在 select 上阻塞，无法成功地 register
+                            writeSelector.wakeup();
+                            channel.register(writeSelector, SelectionKey.OP_WRITE, call);
+                        } catch (ClosedChannelException e) {
+                            done = true;
+                        } finally {
+                            decPending();
+                        }
+                    }
+
+                    if (LOG.isDebugEnabled()) {
+                        LOG.debug(Thread.currentThread().getName() + ": responding to " + call
+                                + " Wrote partial " + numBytes + " bytes.");
+                    }
+                }
+                error = false;
+            } finally {
+                if (error && call != null) {
+                    LOG.warn(Thread.currentThread().getName()+", call " + call + ": output error");
+                    done = true;
+                    closeConnection(call.connection);
+                }
+            }
+
+            return done;
+        }
+
+        void doResponse(Call call) throws IOException {
+            synchronized (call.connection.responseQueue) {
+                call.connection.responseQueue.addLast(call);
+                // 如果队列只有当前的响应信息，直接写响应信息
+                // 否则，只写入队列，Handler 线程不做响应信息的发送
+                if (call.connection.responseQueue.size() == 1) {
+                    processResponse(call.connection.responseQueue, true);
+                }
+            }
+        }
+
+        private synchronized void incPending() {
+            pending++;
+        }
+
+        private synchronized void decPending() {
+            pending--;
+            notify();
+        }
+
+        private synchronized void waitPending() throws InterruptedException {
+            while (pending > 0) {
+                wait();
+            }
         }
     }
 
@@ -683,6 +948,8 @@ public abstract class Server {
         private ByteBuffer connectionHeaderBuf = null;
         private ByteBuffer data;
 
+        private final LinkedList<Call> responseQueue;
+
         /** 连接头是否被读过 */
         private boolean connectionHeaderRead = false;
         /** 连接头后的连接上下文是否被读过 */
@@ -704,6 +971,8 @@ public abstract class Server {
             this.remotePort = socket.getPort();
 
             this.dataLengthBuffer = ByteBuffer.allocate(4);
+
+            this.responseQueue = new LinkedList<Call>();
         }
 
         @Override
