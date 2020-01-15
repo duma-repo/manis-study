@@ -79,7 +79,6 @@ public class ManisDb {
 
     public static void main(String[] args) throws IOException {
         Configuration conf = new Configuration();
-        conf.set(CommonConfigurationKeysPublic.MANIS_RPC_PROTOBUF_KEY, "manis://localhost:8866");
 
         ManisDb manisDb = new ManisDb(conf);
         manisDb.join();
