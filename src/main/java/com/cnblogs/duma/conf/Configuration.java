@@ -1,5 +1,7 @@
 package com.cnblogs.duma.conf;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Properties;
 
 /**
@@ -10,9 +12,10 @@ public class Configuration {
     public static final String TRUE_STR = "true";
     public static final String FALSE_STR = "false";
 
-    public Configuration() {
-        //todo init properties
+    public Configuration() throws IOException {
+        InputStream inStream = ClassLoader.getSystemResourceAsStream("manis-db.properties");
         properties = new Properties();
+        properties.load(inStream);
     }
 
     public void set(String name, String value) {
