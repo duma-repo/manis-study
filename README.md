@@ -2,48 +2,53 @@
 
 欢迎关注公众号：**渡码**
 
-![](https://user-gold-cdn.xitu.io/2019/10/21/16deeefa694211d1?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
+![](https://files-cdn.cnblogs.com/files/duma/duma_tuiguang2.bmp)
 
-代码已更新至第二十节
+关注公众号 **渡码** 回复关键字 **manis**，可获取电子书、各章节和完整源代码，并且可加入读者群一起交流问题。
 
-教程内容：
+欢迎加入知识星球
 
-[1. Manis 项目架构设计以及核心概念](https://juejin.im)
+![](https://files-cdn.cnblogs.com/files/duma/xingqiu_new.bmp)
 
-[2. 搭建客户端本地调用框架](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf0ee51d457230493c32)
 
-[3. 创建客户端的 Invoker 代理](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf166fb9a04dea5dfa5d)
+本书章节：
 
-[4. serializable序列化的代理模块](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf1f518825092e160977)
+[1. Manis 项目架构设计以及核心概念](https://github.com/duma-repo/manis-study/tree/starter)
 
-[5. protobuf序列化方式的代理模块](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf27e51d4578176b519b)
+[2. 搭建客户端本地调用框架](https://github.com/duma-repo/manis-study/tree/section-2)
 
-[6. 发送调用请求的准备工作](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf30e51d4524e87d5eef)
+[3. 创建客户端的 Invoker 代理](https://github.com/duma-repo/manis-study/tree/section-3)
 
-[7. 建立与服务端的网络连接](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf386fb9a04de30c88aa)
+[4. serializable序列化的代理模块](https://github.com/duma-repo/manis-study/tree/section-4)
 
-[8. 发送调用请求](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf40e51d45252f0fcb7b)
+[5. protobuf序列化方式的代理模块](https://github.com/duma-repo/manis-study/tree/section-5)
 
-[9. 接收服务端响应](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf49e51d452eb022efc9)
+[6. 发送调用请求的准备工作](https://github.com/duma-repo/manis-study/tree/section-6)
 
-[10. 服务端架构设计](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf51e51d4525292d34e2)
+[7. 建立与服务端的网络连接](https://github.com/duma-repo/manis-study/tree/section-7)
 
-[11. 搭建服务端框架](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf59f265da5b827d9082)
+[8. 发送调用请求](https://github.com/duma-repo/manis-study/tree/section-8)
 
-[12. serializable序列方式的方法调用](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf636fb9a04e3a7f74d8)
+[9. 接收服务端响应](https://github.com/duma-repo/manis-study/tree/section-9)
 
-[13. protobuf序列方式的方法调用](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf6a518825579a1f9c20)
+[10. 服务端架构设计](https://github.com/duma-repo/manis-study/tree/section-10)
 
-[14. 搭建ipc.Server类框架](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf59f265da5b827d9082)
+[11. 搭建服务端框架](https://github.com/duma-repo/manis-study/tree/section-11)
 
-[15. Listener模块——accept客户端连接](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf7cf265da5baa5b1263)
+[12. serializable序列方式的方法调用](https://github.com/duma-repo/manis-study/tree/section-12)
 
-[16. Reader 模块——多线程并行读请求](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf84e51d45249a5a80bd)
+[13. protobuf序列方式的方法调用](https://github.com/duma-repo/manis-study/tree/section-13)
 
-[17. Handler 模块——多线程并行处理请求](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf8de51d4524e60e0de2)
+[14. 搭建ipc.Server类框架](https://github.com/duma-repo/manis-study/tree/section-14)
 
-[18. Responder 模块——向客户端发送响应](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf95518825374b6a1674)
+[15. Listener模块——accept客户端连接](https://github.com/duma-repo/manis-study/tree/section-15)
 
-[19. 运行 Manis](https://juejin.im/book/5dadc3595188256612195751/section/5dadcf9de51d45754441fc28)
+[16. Reader 模块——多线程并行读请求](https://github.com/duma-repo/manis-study/tree/section-16)
 
-[20. 总结](https://juejin.im/book/5dadc3595188256612195751/section/5dadcfa6e51d45216d7b18b7)
+[17. Handler 模块——多线程并行处理请求](https://github.com/duma-repo/manis-study/tree/section-17)
+
+[18. Responder 模块——向客户端发送响应](https://github.com/duma-repo/manis-study/tree/section-18)
+
+[19. 运行 Manis](https://github.com/duma-repo/manis-study/tree/section-19)
+
+[20. 总结]()
